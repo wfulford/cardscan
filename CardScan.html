@@ -195,6 +195,12 @@
             gap: 12px;
             margin-top: 12px;
         }
+        
+        .small-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
     </style>
 </head>
 <body>
@@ -203,10 +209,17 @@
         
         <!-- API Key Setup -->
         <div id="setup" class="card setup-section active">
-            <h2 style="margin-bottom: 16px;">Setup API Key</h2>
-            <label for="apiKey">Anthropic API Key:</label>
+            <h2 style="margin-bottom: 16px;">Setup</h2>
+            
+            <label for="workerUrl">Cloudflare Worker URL:</label>
+            <input type="text" id="workerUrl" placeholder="https://your-worker.workers.dev">
+            <div class="small-text">Your Cloudflare Worker proxy URL</div>
+            
+            <label for="apiKey" style="margin-top: 16px;">Anthropic API Key:</label>
             <input type="password" id="apiKey" placeholder="sk-ant-...">
-            <button onclick="saveApiKey()">Save & Start</button>
+            <div class="small-text">From console.anthropic.com</div>
+            
+            <button onclick="saveSettings()">Save & Start</button>
             <div id="setupStatus"></div>
         </div>
         
@@ -271,30 +284,44 @@
 
     <script>
         // Global state
+        let workerUrl = '';
         let apiKey = '';
         let photo1Base64 = '';
         let photo2Base64 = '';
         let contactData = null;
         
-        // Check for saved API key on load
+        // Check for saved settings on load
         window.onload = function() {
-            const saved = localStorage.getItem('anthropicApiKey');
-            if (saved) {
-                apiKey = saved;
+            const savedWorker = localStorage.getItem('workerUrl');
+            const savedKey = localStorage.getItem('anthropicApiKey');
+            
+            if (savedWorker && savedKey) {
+                workerUrl = savedWorker;
+                apiKey = savedKey;
                 document.getElementById('setup').classList.remove('active');
                 document.getElementById('app').classList.add('active');
             }
         };
         
-        function saveApiKey() {
+        function saveSettings() {
+            const worker = document.getElementById('workerUrl').value.trim();
             const key = document.getElementById('apiKey').value.trim();
+            
+            if (!worker.startsWith('https://')) {
+                showStatus('setupStatus', 'Worker URL must start with https://', 'error');
+                return;
+            }
+            
             if (!key.startsWith('sk-ant-')) {
                 showStatus('setupStatus', 'Invalid API key format', 'error');
                 return;
             }
             
+            workerUrl = worker;
             apiKey = key;
+            localStorage.setItem('workerUrl', worker);
             localStorage.setItem('anthropicApiKey', key);
+            
             document.getElementById('setup').classList.remove('active');
             document.getElementById('app').classList.add('active');
         }
@@ -399,13 +426,12 @@
 Fill in all available fields. Use empty strings for missing information. For phone numbers, preserve the format shown on the card. The notes field should contain: "${notes}".`
                 });
                 
-                // Call Claude API
-                const response = await fetch('https://api.anthropic.com/v1/messages', {
+                // Call via Cloudflare Worker proxy
+                const response = await fetch(workerUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'x-api-key': apiKey,
-                        'anthropic-version': '2023-06-01'
+                        'x-api-key': apiKey
                     },
                     body: JSON.stringify({
                         model: 'claude-3-5-sonnet-20241022',
@@ -418,10 +444,16 @@ Fill in all available fields. Use empty strings for missing information. For pho
                 });
                 
                 if (!response.ok) {
-                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(`API Error: ${response.status} - ${errorText}`);
                 }
                 
                 const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
                 const text = data.content[0].text;
                 
                 // Extract JSON from response
