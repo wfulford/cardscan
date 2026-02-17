@@ -434,7 +434,7 @@ Fill in all available fields. Use empty strings for missing information. For pho
                         'x-api-key': apiKey
                     },
                     body: JSON.stringify({
-                        model: 'claude-3-5-sonnet-20241022',
+                        model: 'claude-3-5-sonnet-20240620',
                         max_tokens: 1024,
                         messages: [{
                             role: 'user',
@@ -560,16 +560,4 @@ Fill in all available fields. Use empty strings for missing information. For pho
             document.getElementById('photo1').value = '';
             document.getElementById('photo2').value = '';
             document.getElementById('notes').value = '';
-            document.getElementById('preview1').classList.add('hidden');
-            document.getElementById('preview2').classList.add('hidden');
-            document.getElementById('nextBtn1').classList.add('hidden');
-            document.getElementById('nextBtn2').classList.add('hidden');
-            
-            // Show step 1
-            document.querySelectorAll('.step').forEach(step => step.classList.add('hidden'));
-            document.getElementById('step1').classList.remove('hidden');
-            document.getElementById('errorSection').classList.add('hidden');
-        }
-    </script>
-</body>
-</html>
+            document.getElementById('preview1').
