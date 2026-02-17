@@ -95,4 +95,481 @@
             margin-top: 12px;
         }
         
-        but
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .secondary-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .photo-preview {
+            width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+            border-radius: 8px;
+            margin: 12px 0;
+            border: 2px solid #e0e0e0;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 12px 0;
+            font-weight: 500;
+        }
+        
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .status.processing {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-input-label {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: white;
+            color: #667eea;
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        
+        .file-input-label:active {
+            background: #f5f5f5;
+        }
+        
+        .contact-preview {
+            background: #f5f5f5;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 12px 0;
+        }
+        
+        .contact-preview div {
+            margin: 8px 0;
+        }
+        
+        .contact-preview strong {
+            color: #667eea;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        
+        .small-text {
+            font-size: 12px;
+            color: #888;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📇 CardScan</h1>
+        
+        <!-- API Key Setup -->
+        <div id="setup" class="card setup-section active">
+            <h2 style="margin-bottom: 16px;">Setup</h2>
+            
+            <label for="workerUrl">Cloudflare Worker URL:</label>
+            <input type="text" id="workerUrl" placeholder="https://your-worker.workers.dev">
+            <div class="small-text">Your Cloudflare Worker proxy URL</div>
+            
+            <label for="apiKey" style="margin-top: 16px;">Anthropic API Key:</label>
+            <input type="password" id="apiKey" placeholder="sk-ant-...">
+            <div class="small-text">From console.anthropic.com</div>
+            
+            <button onclick="saveSettings()">Save & Start</button>
+            <div id="setupStatus"></div>
+        </div>
+        
+        <!-- Main App -->
+        <div id="app" class="card setup-section">
+            <div id="step1" class="step">
+                <h2 style="margin-bottom: 16px;">Step 1: Photo Front</h2>
+                <label for="photo1" class="file-input-label">
+                    📸 Take Photo of Front
+                </label>
+                <input type="file" id="photo1" accept="image/*" capture="environment" onchange="handlePhoto1()">
+                <img id="preview1" class="photo-preview hidden">
+                <button id="nextBtn1" class="hidden" onclick="askForSecondSide()">Next →</button>
+            </div>
+            
+            <div id="step2" class="step hidden">
+                <h2 style="margin-bottom: 16px;">Step 2: Second Side?</h2>
+                <div class="status info">Does this card have information on the back?</div>
+                <div class="btn-group">
+                    <button onclick="skipSecondSide()">No</button>
+                    <button onclick="takeSecondSide()">Yes, Take Photo</button>
+                </div>
+            </div>
+            
+            <div id="step2b" class="step hidden">
+                <h2 style="margin-bottom: 16px;">Photo Back Side</h2>
+                <label for="photo2" class="file-input-label">
+                    📸 Take Photo of Back
+                </label>
+                <input type="file" id="photo2" accept="image/*" capture="environment" onchange="handlePhoto2()">
+                <img id="preview2" class="photo-preview hidden">
+                <button id="nextBtn2" class="hidden" onclick="askForNotes()">Next →</button>
+            </div>
+            
+            <div id="step3" class="step hidden">
+                <h2 style="margin-bottom: 16px;">Step 3: Add Notes?</h2>
+                <label for="notes">Notes about this person (optional):</label>
+                <textarea id="notes" placeholder="Met at conference, potential client, etc."></textarea>
+                <button onclick="processCard()">Process Card →</button>
+            </div>
+            
+            <div id="step4" class="step hidden">
+                <h2 style="margin-bottom: 16px;">Processing...</h2>
+                <div id="processingStatus" class="status processing">
+                    Extracting contact information with AI...
+                </div>
+            </div>
+            
+            <div id="step5" class="step hidden">
+                <h2 style="margin-bottom: 16px;">Review Contact</h2>
+                <div id="contactPreview" class="contact-preview"></div>
+                <button onclick="downloadVCard()">Download vCard</button>
+                <button class="secondary-btn" onclick="startOver()">Scan Another Card</button>
+            </div>
+            
+            <div id="errorSection" class="hidden">
+                <div class="status error" id="errorMessage"></div>
+                <button class="secondary-btn" onclick="startOver()">Try Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let workerUrl = '';
+        let apiKey = '';
+        let photo1Base64 = '';
+        let photo2Base64 = '';
+        let contactData = null;
+        
+        // Check for saved settings on load
+        window.onload = function() {
+            const savedWorker = localStorage.getItem('workerUrl');
+            const savedKey = localStorage.getItem('anthropicApiKey');
+            
+            if (savedWorker && savedKey) {
+                workerUrl = savedWorker;
+                apiKey = savedKey;
+                document.getElementById('setup').classList.remove('active');
+                document.getElementById('app').classList.add('active');
+            }
+        };
+        
+        function saveSettings() {
+            const worker = document.getElementById('workerUrl').value.trim();
+            const key = document.getElementById('apiKey').value.trim();
+            
+            if (!worker.startsWith('https://')) {
+                showStatus('setupStatus', 'Worker URL must start with https://', 'error');
+                return;
+            }
+            
+            if (!key.startsWith('sk-ant-')) {
+                showStatus('setupStatus', 'Invalid API key format', 'error');
+                return;
+            }
+            
+            workerUrl = worker;
+            apiKey = key;
+            localStorage.setItem('workerUrl', worker);
+            localStorage.setItem('anthropicApiKey', key);
+            
+            document.getElementById('setup').classList.remove('active');
+            document.getElementById('app').classList.add('active');
+        }
+        
+        function handlePhoto1() {
+            const file = document.getElementById('photo1').files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                photo1Base64 = e.target.result.split(',')[1];
+                document.getElementById('preview1').src = e.target.result;
+                document.getElementById('preview1').classList.remove('hidden');
+                document.getElementById('nextBtn1').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function askForSecondSide() {
+            document.getElementById('step1').classList.add('hidden');
+            document.getElementById('step2').classList.remove('hidden');
+        }
+        
+        function skipSecondSide() {
+            photo2Base64 = '';
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step3').classList.remove('hidden');
+        }
+        
+        function takeSecondSide() {
+            document.getElementById('step2').classList.add('hidden');
+            document.getElementById('step2b').classList.remove('hidden');
+        }
+        
+        function handlePhoto2() {
+            const file = document.getElementById('photo2').files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                photo2Base64 = e.target.result.split(',')[1];
+                document.getElementById('preview2').src = e.target.result;
+                document.getElementById('preview2').classList.remove('hidden');
+                document.getElementById('nextBtn2').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        function askForNotes() {
+            document.getElementById('step2b').classList.add('hidden');
+            document.getElementById('step3').classList.remove('hidden');
+        }
+        
+        async function processCard() {
+            document.getElementById('step3').classList.add('hidden');
+            document.getElementById('step4').classList.remove('hidden');
+            
+            try {
+                const notes = document.getElementById('notes').value.trim();
+                const today = new Date().toISOString().split('T')[0];
+                
+                // Prepare content for API
+                const content = [
+                    {
+                        type: "image",
+                        source: {
+                            type: "base64",
+                            media_type: "image/jpeg",
+                            data: photo1Base64
+                        }
+                    }
+                ];
+                
+                if (photo2Base64) {
+                    content.push({
+                        type: "image",
+                        source: {
+                            type: "base64",
+                            media_type: "image/jpeg",
+                            data: photo2Base64
+                        }
+                    });
+                }
+                
+                content.push({
+                    type: "text",
+                    text: `Extract all contact information from this business card image${photo2Base64 ? 's (front and back)' : ''} and return ONLY a JSON object with the following fields:
+{
+  "firstName": "",
+  "lastName": "",
+  "fullName": "",
+  "company": "",
+  "title": "",
+  "email": "",
+  "phone": "",
+  "mobile": "",
+  "address": "",
+  "website": "",
+  "notes": "${notes}"
+}
+
+Fill in all available fields. Use empty strings for missing information. For phone numbers, preserve the format shown on the card. The notes field should contain: "${notes}".`
+                });
+                
+                // Call via Cloudflare Worker proxy
+                const response = await fetch(workerUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({
+                        model: 'claude-3-haiku-20240307',
+                        max_tokens: 1024,
+                        messages: [{
+                            role: 'user',
+                            content: content
+                        }]
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`API Error: ${response.status} - ${errorText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                const text = data.content[0].text;
+                
+                // Extract JSON from response
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                if (!jsonMatch) {
+                    throw new Error('Could not extract contact data from response');
+                }
+                
+                contactData = JSON.parse(jsonMatch[0]);
+                contactData.dateAdded = today;
+                
+                displayContactPreview();
+                
+            } catch (error) {
+                showError('Error processing card: ' + error.message);
+            }
+        }
+        
+        function displayContactPreview() {
+            document.getElementById('step4').classList.add('hidden');
+            document.getElementById('step5').classList.remove('hidden');
+            
+            const preview = document.getElementById('contactPreview');
+            let html = '';
+            
+            if (contactData.fullName) html += `<div><strong>Name:</strong> ${contactData.fullName}</div>`;
+            if (contactData.title) html += `<div><strong>Title:</strong> ${contactData.title}</div>`;
+            if (contactData.company) html += `<div><strong>Company:</strong> ${contactData.company}</div>`;
+            if (contactData.email) html += `<div><strong>Email:</strong> ${contactData.email}</div>`;
+            if (contactData.phone) html += `<div><strong>Phone:</strong> ${contactData.phone}</div>`;
+            if (contactData.mobile) html += `<div><strong>Mobile:</strong> ${contactData.mobile}</div>`;
+            if (contactData.address) html += `<div><strong>Address:</strong> ${contactData.address}</div>`;
+            if (contactData.website) html += `<div><strong>Website:</strong> ${contactData.website}</div>`;
+            if (contactData.notes) html += `<div><strong>Notes:</strong> ${contactData.notes}</div>`;
+            if (contactData.dateAdded) html += `<div><strong>Date Added:</strong> ${contactData.dateAdded}</div>`;
+            
+            preview.innerHTML = html;
+        }
+        
+        function downloadVCard() {
+            const vcard = generateVCard(contactData);
+            const blob = new Blob([vcard], { type: 'text/vcard' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${contactData.fullName || 'contact'}.vcf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        function generateVCard(data) {
+            let vcard = 'BEGIN:VCARD\nVERSION:3.0\n';
+            
+            if (data.fullName) {
+                vcard += `FN:${data.fullName}\n`;
+                const nameParts = data.fullName.split(' ');
+                const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : data.fullName;
+                vcard += `N:${lastName};${firstName};;;\n`;
+            }
+            
+            if (data.company) vcard += `ORG:${data.company}\n`;
+            if (data.title) vcard += `TITLE:${data.title}\n`;
+            if (data.email) vcard += `EMAIL;TYPE=INTERNET:${data.email}\n`;
+            if (data.phone) vcard += `TEL;TYPE=WORK,VOICE:${data.phone}\n`;
+            if (data.mobile) vcard += `TEL;TYPE=CELL:${data.mobile}\n`;
+            if (data.website) vcard += `URL:${data.website}\n`;
+            if (data.address) vcard += `ADR;TYPE=WORK:;;${data.address};;;;\n`;
+            
+            // Combine notes and date added
+            let noteText = '';
+            if (data.notes) noteText += data.notes;
+            if (data.dateAdded) {
+                if (noteText) noteText += ' | ';
+                noteText += `Added: ${data.dateAdded}`;
+            }
+            if (noteText) vcard += `NOTE:${noteText}\n`;
+            
+            vcard += 'END:VCARD';
+            return vcard;
+        }
+        
+        function showError(message) {
+            document.getElementById('step4').classList.add('hidden');
+            document.getElementById('errorSection').classList.remove('hidden');
+            document.getElementById('errorMessage').textContent = message;
+        }
+        
+        function showStatus(elementId, message, type) {
+            const el = document.getElementById(elementId);
+            el.className = `status ${type}`;
+            el.textContent = message;
+        }
+        
+        function startOver() {
+            // Reset state
+            photo1Base64 = '';
+            photo2Base64 = '';
+            contactData = null;
+            
+            // Reset form
+            document.getElementById('photo1').value = '';
+            document.getElementById('photo2').value = '';
+            document.getElementById('notes').value = '';
+            document.getElementById('preview1').classList.add('hidden');
+            document.getElementById('preview2').classList.add('hidden');
+            document.getElementById('nextBtn1').classList.add('hidden');
+            document.getElementById('nextBtn2').classList.add('hidden');
+            
+            // Show step 1
+            document.querySelectorAll('.step').forEach(step => step.classList.add('hidden'));
+            document.getElementById('step1').classList.remove('hidden');
+            document.getElementById('errorSection').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
